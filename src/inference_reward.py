@@ -18,7 +18,7 @@ from PIL import Image
 # sys.path.insert(0, '/home2/s20235100/Conversational-AI/MyModel/src/model/')
 warnings.filterwarnings(action='ignore')
 
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
 tokenizer.padding_side = 'left'
 tokenizer.truncation_side = 'left'
 

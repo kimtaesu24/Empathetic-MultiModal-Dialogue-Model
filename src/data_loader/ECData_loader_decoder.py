@@ -29,11 +29,11 @@ class EC_Decoder_Dataset(Dataset):
         self.audio_pad_size = args.audio_pad_size
         self.fusion_type = args.fusion_type
 
-        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
         self.tokenizer.padding_side = 'left'
         self.tokenizer.truncation_side = 'left'
 
-        self.label_tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+        self.label_tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
 
         if mode == 'train':
             self.text_data = pd.read_csv(f'{self.data_path}/{mode}/text/text_data.csv')

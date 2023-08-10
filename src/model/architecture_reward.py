@@ -102,7 +102,7 @@ class MyArch(torch.nn.Module):
             self.act = nn.ReLU()
 
         self.gpt_model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-large")
-        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
         self.embedding_layer = self.gpt_model.get_input_embeddings()
         self.word_dimension = self.gpt_model.config.hidden_size  # 1280
         

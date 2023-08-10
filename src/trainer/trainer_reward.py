@@ -19,7 +19,7 @@ class MyTrainer:
     def __init__(self, device, data_path):
         self.device = device
         self.data_path = data_path
-        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
 
     def train_with_hyper_param(self, args):
         # checkpoint save dir create
