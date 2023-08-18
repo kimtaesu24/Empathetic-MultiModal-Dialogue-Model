@@ -23,7 +23,7 @@ class MyTrainer:
 
     def train_with_hyper_param(self, args):
         # checkpoint save dir create
-        directory = f"../checkpoint/{args.data_name}/{args.modals}_manager:{args.use_manager}_RL:{args.use_RL}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:{args.alpha}/"
+        directory = f"../checkpoint/{args.data_name}/{args.modals}_manager:{args.use_manager}_RL:{args.use_RL}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:{args.alpha}/"
         try:
             if not os.path.exists(directory):
                 os.makedirs(directory)
@@ -33,7 +33,7 @@ class MyTrainer:
         
         ###########################################################    
         # json_output save dir create
-        json_directory = f"./valid_output/{args.data_name}/{args.modals}_manager:{args.use_manager}_RL:{args.use_RL}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:{args.alpha}/"
+        json_directory = f"./valid_output/{args.data_name}/{args.modals}_manager:{args.use_manager}_RL:{args.use_RL}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:{args.alpha}/"
         try:
             if not os.path.exists(json_directory):
                 os.makedirs(json_directory)
@@ -41,7 +41,7 @@ class MyTrainer:
             print("Error: Failed to create the directory.")
             exit()
         ###########################################################
-
+        
         model = MyArch(args, self.device, json_directory).to(self.device)
         if args.LLM_freeze:
             for parameters in model.gpt_model.parameters():
@@ -57,7 +57,7 @@ class MyTrainer:
         if args.data_name == 'MELD':
             train_dataset = MELD_Decoder_Dataset(self.data_path, mode='train', device=self.device, args=args)
             valid_dataset = MELD_Decoder_Dataset(self.data_path, mode='valid', device=self.device, args=args)
-        if args.data_name == 'EC':
+        if args.data_name == 'MSC':
             train_dataset = EC_Decoder_Dataset(self.data_path, mode='train', device=self.device, args=args)
             valid_dataset = EC_Decoder_Dataset(self.data_path, mode='valid', device=self.device, args=args)
             
@@ -72,8 +72,10 @@ class MyTrainer:
 
         if not args.debug:  # code for debug mode
             wandb.init(project=f"DialoGen")
-            # d = datetime.datetime.today()
-            # wandb.run.name = model_name + d.strftime('%c')
+            m = "'manager'" if args.use_manager else ''
+            r = "'RL'" if args.use_RL else ''
+            q = "'query'" if args.use_query else ''
+            wandb.run.name = f"{args.data_name} ~ '{args.modals}' {m} {r} {q} [{args.visual_type}] [{args.audio_type}]"
 
         pbar = tqdm(range(args.epochs), position=0, leave=False, desc='epoch')
         for epoch in pbar:
@@ -86,8 +88,8 @@ class MyTrainer:
             total_valid_bleu_4 = 0
             total_valid_meteor = 0
             total_valid_rouge = 0
-            # total_valid_cider = 0
-            # total_valid_spice = 0
+            total_valid_cider = 0
+            total_valid_spice = 0
             
             # training
             model.train()
@@ -98,7 +100,7 @@ class MyTrainer:
                 loss, eval_result = model(inputs, labels)
                 
                 prog_bar.set_postfix({'loss': loss.item()})
-
+                
                 loss.backward()
                 optimizer.step()
 
@@ -116,7 +118,7 @@ class MyTrainer:
                 for inputs, labels in tqdm(valid_dataloader, position=1, leave=False, desc='batch'):
                     
                     loss, eval_result = model(inputs, labels, metric_log=metric_log, epoch=epoch+1)
-
+                    
                     total_valid_loss += loss.item()
 
                     if metric_log:
@@ -127,29 +129,28 @@ class MyTrainer:
 
                         total_valid_meteor += eval_result['METEOR']
                         total_valid_rouge += eval_result['ROUGE_L']
-                        # total_valid_cider += eval_result['CIDEr']
-                        # total_valid_spice += eval_result['SPICE']
-                    
-            if not args.debug:  # code for debugging
+                        total_valid_cider += eval_result['CIDEr']
+                        total_valid_spice += eval_result['SPICE']
                 output_loss__dict = {'train_loss (epoch)': total_train_loss/train_batch_len,
                                      'valid_loss (epoch)': total_valid_loss/valid_batch_len
                                      }
-                wandb.log(output_loss__dict)
+                output_metric_dict = {'valid_Bleu-1 (epoch)': total_valid_bleu_1/valid_batch_len,
+                                        'valid_Bleu-2 (epoch)': total_valid_bleu_2/valid_batch_len,
+                                        'valid_Bleu-3 (epoch)': total_valid_bleu_3/valid_batch_len,
+                                        'valid_bleu-4 (epoch)': total_valid_bleu_4/valid_batch_len,
+                                        'valid_METEOR (epoch)': total_valid_meteor/valid_batch_len,
+                                        'valid_ROUGE_L (epoch)': total_valid_rouge/valid_batch_len,
+                                      'valid_CIDEr (epoch)': total_valid_cider/valid_batch_len,
+                                      'valid_SPICE (epoch)': total_valid_spice/valid_batch_len,
+                                        }
                 print(output_loss__dict)
+                print(output_metric_dict)
                 
+            if not args.debug:  # code for debugging
+                wandb.log(output_loss__dict)
                 if metric_log:
-                    output_metric_dict = {'valid_Bleu-1 (epoch)': total_valid_bleu_1/valid_batch_len,
-                                          'valid_Bleu-2 (epoch)': total_valid_bleu_2/valid_batch_len,
-                                          'valid_Bleu-3 (epoch)': total_valid_bleu_3/valid_batch_len,
-                                          'valid_bleu-4 (epoch)': total_valid_bleu_4/valid_batch_len,
-                                          'valid_METEOR (epoch)': total_valid_meteor/valid_batch_len,
-                                          'valid_ROUGE_L (epoch)': total_valid_rouge/valid_batch_len,
-                                        #   'valid_CIDEr (epoch)': total_valid_cider/valid_batch_len,
-                                        #   'valid_SPICE (epoch)': total_valid_spice/valid_batch_len,
-                                          }
                     wandb.log(output_metric_dict)
-                    print(output_metric_dict)
-
+            
             # save checkpoint
             if (epoch+1) % args.save_at_every == 0:
                 if args.resume is not None:
@@ -159,7 +160,7 @@ class MyTrainer:
                 pbar.write('Checkpoint model has saved at Epoch: {:02} '.format(epoch+1))
 
             scheduler.step()  # per epochs
-            pbar.update()
+            # pbar.update()
         pbar.close()
 
         return model

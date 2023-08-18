@@ -7,13 +7,15 @@ import argparse
 import torchvision.transforms as transforms
 import os
 import warnings
+import natsort
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from model.architecture_reward import MyArch
 from utils.util import log_args
 from model import modules
 from facenet_pytorch import InceptionResnetV1
 from PIL import Image
+from tqdm import tqdm
 
 # sys.path.insert(0, '/home2/s20235100/Conversational-AI/MyModel/src/model/')
 warnings.filterwarnings(action='ignore')
@@ -30,6 +32,7 @@ def load_EC_data(data_path, args, dia_id, utt_id, device, mode='test'):
     elif args.audio_type == 'wavlm':
         audio_feature_path = data_path + 'audio_feature/wavlm/' + mode
     visual_type = args.visual_type
+    landmark_num = 7
         
     max_length =args.max_length
     history_length = args.history_length
@@ -47,7 +50,7 @@ def load_EC_data(data_path, args, dia_id, utt_id, device, mode='test'):
     resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
         
     #########################################################################
-    context = ' '.join(text_data['Utterance'][(text_data['Dialogue_ID'] == int(dia_id)) & (text_data['Utterance_ID'] == int(utt_id))]).lower() + '.'
+    context = ' '.join(text_data['Utterance'][(text_data['Dialogue_ID'] == int(dia_id)) & (text_data['Utterance_ID'] == int(utt_id))])
 
     tokens = tokenizer(context + tokenizer.eos_token,
                         padding='max_length',
@@ -68,18 +71,25 @@ def load_EC_data(data_path, args, dia_id, utt_id, device, mode='test'):
     visual_feature = torch.tensor(0)
     if 'v' in modals:
         if visual_type == 'landmark':
-            landmark_set = torch.tensor(ast.literal_eval(landmark['landmark_list'][idx]))
-            visual_feature = landmark_set[len(landmark_set)//2]
-        elif visual_type == 'face_image':
-            src_path = f"{data_path}/{mode}/speaker_image/dia{dia_id}_utt{utt_id}"
+            src_path = f"{data_path}/{mode}/landmark/dia{dia_id}_utt{utt_id}/"
             dirListing = os.listdir(src_path)
-            image_path = src_path+f'/{format(dirListing[(len(dirListing))//2])}'  # middle file in the directory
-            img = Image.open(image_path)
-            # print(img.size)
-            # img_cropped = self.mtcnn(img)
-            normalized_image = transform(img)
-            # print(img_cropped.shape)
-            visual_feature = resnet(normalized_image.unsqueeze(0).to(device))
+            if len(dirListing) >= landmark_num:
+                tensor_list = []
+                for i in range(landmark_num):
+                    tensor = torch.load(src_path + dirListing[round(i * len(dirListing)/landmark_num)])
+                    tensor_list.append(torch.tensor(tensor.flatten(), dtype=torch.float32))  # [2,96] -> [landmark_dim]
+                visual_feature = torch.cat(tensor_list, dim=0)
+            else:
+                tensor_list = []
+                for lm in dirListing:
+                    tensor = torch.load(src_path + lm)
+                    tensor_list.append(torch.tensor(tensor.flatten(), dtype=torch.float32))  # [2,96] -> [landmark_dim]
+                visual_feature = torch.cat(tensor_list, dim=0)
+                visual_feature = modules.pad(visual_feature, landmark_num * tensor_list[0].shape[0])
+        elif visual_type == 'face_image':
+            src_path = f"{data_path}/{mode}/face_feature/dia{dia_id}_utt{utt_id}/"
+            dirListing = os.listdir(src_path)
+            visual_feature = torch.load(src_path + dirListing[0])
             # print(visual_feature.shape)
             visual_feature = torch.squeeze(visual_feature, dim=0)
 
@@ -117,6 +127,7 @@ def load_MELD_data(data_path, args, dia_id, utt_id, device, mode='test'):
     elif args.audio_type == 'wavlm':
         audio_feature_path = data_path + 'audio_feature/wavlm/' + mode
     visual_type = args.visual_type
+    landmark_num = 7
         
     max_length =args.max_length
     history_length = args.history_length
@@ -129,7 +140,7 @@ def load_MELD_data(data_path, args, dia_id, utt_id, device, mode='test'):
     history_path = data_path + mode
     #########################################################################
 
-    idx = FA[(FA['Dialogue_ID'] == dia) & (FA['Utterance_ID'] == utt)].index[0]
+    idx = FA[(FA['Dialogue_ID'] == dia_id) & (FA['Utterance_ID'] == utt_id)].index[0]
 
     context = ' '.join(ast.literal_eval(FA['word'][idx])).lower() + '.'
 
@@ -154,14 +165,18 @@ def load_MELD_data(data_path, args, dia_id, utt_id, device, mode='test'):
     if 'v' in modals:
         if visual_type == 'landmark':
             landmark_set = torch.tensor(ast.literal_eval(landmark['landmark_list'][idx]))
-            visual_feature = landmark_set[len(landmark_set)//2]
+            if len(landmark_set) >= landmark_num:
+                visual_feature = landmark_set[[round(i * len(landmark_set)/7) for i in range(7)]] # number of landmark inputs is 7
+                visual_feature = torch.flatten(visual_feature)  # [self.landmark_num, landmark_dim] -> [self.landmark_num * landmark_dim]
+            else:
+                visual_feature = modules.pad(torch.flatten(landmark_set[:]), landmark_num * landmark_set[0].shape[0])
         elif visual_type == 'face_image':
             src_path = f"{data_path}/{mode}/dia{dia_id}/utt{utt_id}"
             dirListing = os.listdir(src_path)
             image_path = src_path+'/{:06d}.jpg'.format((len(dirListing)-3)//2)
             visual_feature = torch.tensor([])
 
-    with open(f"{history_path}/dia{dia}/utt{utt}/dia{dia}_utt{utt}_history.json", "r") as json_file:
+    with open(f"{history_path}/dia{dia_id}/utt{utt_id}/dia{dia_id}_utt{utt_id}_history.json", "r") as json_file:
         historys = json.load(json_file)
 
     input_historys = ""
@@ -215,40 +230,44 @@ def show_meld_sample(model, args, device):
         print("Response: {}".format(sentence))
         print()
         
-def show_ec_sample(model, args, device):
-    dia_utt = [
-            #    [13, 6],
-            #    [16, 8],
-            #    [37, 6],
-            #    [65, 9],
-            #    [99, 7],
-            #    [114, 4],
-            #    [121, 4],
-            #    [127, 4],
-            #    [131, 7],
-               ]
-    for d_u in dia_utt:
-        dia = d_u[0]
-        utt = d_u[1]
-        print(f'Test Data: dia{dia}_utt{utt}.mp4')
+def show_ec_sample(model, args, device, csv_name):
+    mode = 'test'
+    dataset = natsort.natsorted(os.listdir(f'/home2/dataset/english_conversation/{mode}/speaker_image/'))
+    total_data = len(dataset)
+    print(total_data)
+
+    for idx in range(total_data):
+        # dia = d_u[0]
+        # utt = d_u[1]
+        # print(f'Test Data: dia{dia}_utt{utt}.mp4')
+        data = dataset[idx]
+    
+        dia = data.split('_')[0][3:]
+        utt = data.split('_')[1][3:]
         
         data_path = '/home2/dataset/english_conversation/'
-        inputs, historys = load_EC_data(data_path, args, dia, utt, device, mode='test')
+        inputs, historys = load_EC_data(data_path, args, dia, utt, device, mode=mode)
         # for i, k in enumerate(historys):
         #     print(f'{i}-th sentence: {k}')
         
         outputs = model.inference(inputs, greedy=False)
-        # print(outputs)
         sentence = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        print("Response: {}".format(sentence))
-        print()
+        # 기존 데이터를 불러오기
+        try:
+            existing_data = pd.read_csv(f'{csv_name}.csv')
+        except FileNotFoundError:
+            existing_data = pd.DataFrame()
 
+        # 새로운 데이터 생성
+        new_data = pd.DataFrame({'Dialogue_ID': [dia], 'Utterance_ID': [utt], 'output': [sentence]})
+
+        # 기존 데이터와 새로운 데이터를 합치기
+        combined_data = pd.concat([existing_data, new_data], ignore_index=True)
+
+        # 누적된 데이터를 CSV 파일로 저장
+        combined_data.to_csv(f'{csv_name}.csv', index=False)
 
 if __name__ == '__main__':
-    checkpoint = 50
-    weight_path = f"../checkpoint/EC/tf_decoder/x_full_model/{str(checkpoint)}_epochs.pt"
-    print('checkpoint path at:', weight_path)
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_name', default='EC', help='select dataset for training')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
@@ -266,24 +285,29 @@ if __name__ == '__main__':
     parser.add_argument('--save_at_every', type=int, default=10, help='save checkpoint')
     parser.add_argument('--metric_at_every', type=int, default=10, help='calculate metric scores')
     parser.add_argument('--LLM_freeze', action='store_true', default=False, help='freeze language decoder or not')
-    parser.add_argument('--audio_type', default='wav2vec2', help='audio feature extract type |wavlm')
+    parser.add_argument('--audio_type', default='wavlm', help='audio feature extract type |wav2vec2')
     parser.add_argument('--fusion_type', default='tf_decoder', help='modal fusion method |graph')
-    parser.add_argument('--visual_type', default='face_image', help='visual feature type |landmark')
+    parser.add_argument('--visual_type', default='landmark', help='visual feature type |face_image')
     parser.add_argument('--modals', default='avl', help='modals to fusion')
     parser.add_argument('--use_manager', action='store_true', default=False, help='use reinforcement learning on training or not')
     parser.add_argument('--use_RL', action='store_true', default=False, help='use reinforcement learning on training or not')
+    parser.add_argument('--use_query', action='store_true', default=False, help='use reinforcement learning on training or not')
     parser.add_argument('--resume', default=None, help='resume train with checkpoint path or not')
     parser.add_argument('--debug', action='store_true', default=False, help='debug mode for wandb')
+    parser.add_argument('--idx', type=int, default=0)
     args = parser.parse_args()
     log_args(args)
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    model = MyArch(args, device).to(device)
+    weight_path = f"../checkpoint/EC/{args.modals}_manager:False_RL:{args.use_RL}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:0.001/{str(checkpoint)}_epochs.pt"
+    print(f"model: {weight_path}")
+    csv_name = f'./{args.modals}_RL:{args.use_RL}_visual:{args.visual_type}_audio:{args.audio_type}_alpha:0.001'
+    
+    model = MyArch(args, device, json_directory=None).to(device)
     model.load_state_dict(torch.load(weight_path))
     model.to(device)
     model.eval()
-    print('checkpoint model has loaded')
-
-    show_meld_sample(model, args, device)
-    # show_ec_sample(model, args, device)
+    
+    # show_meld_sample(model, args, device)
+    show_ec_sample(model, args, device, csv_name)

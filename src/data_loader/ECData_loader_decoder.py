@@ -5,6 +5,7 @@ import ast
 import json
 import os
 import torchvision.transforms as transforms
+import natsort
 
 from model import modules
 from torch.utils.data import Dataset
@@ -43,12 +44,12 @@ class EC_Decoder_Dataset(Dataset):
         self.history_path = f'{self.data_path}{mode}/text/history'
         self.manual_index = 0
         
-        self.transform = transforms.Compose([
-            transforms.Resize((160,160)),        # Resize the image to the desired size
-            transforms.ToTensor()                   # Convert the image to a PyTorch tensor
-        ])
+        # self.transform = transforms.Compose([
+        #     transforms.Resize((160,160)),        # Resize the image to the desired size
+        #     transforms.ToTensor()                   # Convert the image to a PyTorch tensor
+        # ])
         # self.mtcnn = MTCNN()
-        self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
+        # self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
         
         self.visual_list = os.listdir(f'{self.data_path}/{mode}/speaker_image/')
         self.mode = mode
@@ -59,14 +60,17 @@ class EC_Decoder_Dataset(Dataset):
         # for idx in range(len(os.listdir(f'{self.data_path}{self.mode}/speaker_image')) - 1):
         #     if (self.text_data['Dialogue_ID'][idx] == self.text_data['Dialogue_ID'][idx+1]):  # same dialogue
         #         length += 1
-        return total_data - total_dia
+        if self.mode == 'test':
+            return total_data - total_dia - 1
+        else:
+            return total_data - total_dia 
 
     def __getitem__(self, idx):
         if idx == 0:
             self.manual_index = 0  # initialize
 
         idx += self.manual_index
-        # next dialogue appear OR empty uttrance appear
+        # next dialogue appear
         while (self.text_data['Dialogue_ID'][idx] != self.text_data['Dialogue_ID'][idx+1]):
             self.manual_index += 1
             idx += 1
@@ -80,8 +84,8 @@ class EC_Decoder_Dataset(Dataset):
         # utt_id = self.text_data['Utterance_ID'][idx]
         
         # extract textual feature
-        context = ' '.join(self.text_data['Utterance'][(self.text_data['Dialogue_ID'] == int(dia_id)) & (self.text_data['Utterance_ID'] == int(utt_id))]).lower() + '.'
-        response = ' '.join(self.text_data['Utterance'][(self.text_data['Dialogue_ID'] == int(dia_id)) & (self.text_data['Utterance_ID'] == int(utt_id)+1)]).lower() + '.'
+        context = ' '.join(self.text_data['Utterance'][(self.text_data['Dialogue_ID'] == int(dia_id)) & (self.text_data['Utterance_ID'] == int(utt_id))])
+        response = ' '.join(self.text_data['Utterance'][(self.text_data['Dialogue_ID'] == int(dia_id)) & (self.text_data['Utterance_ID'] == int(utt_id)+1)])
 
         tokens = self.tokenizer(context + self.tokenizer.eos_token,
                                 padding='max_length',
@@ -118,16 +122,17 @@ class EC_Decoder_Dataset(Dataset):
                     visual_feature = torch.cat(tensor_list, dim=0)
                     visual_feature = modules.pad(visual_feature, self.landmark_num * tensor_list[0].shape[0])
             elif self.visual_type == 'face_image':
-                src_path = f"{self.data_path}/{self.mode}/speaker_image/dia{dia_id}_utt{utt_id}"
+                src_path = f"{self.data_path}/{self.mode}/face_feature/dia{dia_id}_utt{utt_id}/"
                 dirListing = os.listdir(src_path)
-                image_path = src_path+f'/{format(dirListing[(len(dirListing))//2])}'  # middle file in the directory
-                img = Image.open(image_path)
-                # print(img.size)
-                # img_cropped = self.mtcnn(img)
-                normalized_image = self.transform(img)
-                # print(img_cropped.shape)
-                visual_feature = self.resnet(normalized_image.unsqueeze(0).to(self.device))
-                # print(visual_feature.shape)
+                visual_feature = torch.load(src_path + dirListing[0])
+                # image_path = src_path+f'/{format(dirListing[(len(dirListing))//2])}'  # middle file in the directory
+                # img = Image.open(image_path)
+                # # print(img.size)
+                # # img_cropped = self.mtcnn(img)
+                # normalized_image = self.transform(img)
+                # # print(img_cropped.shape)
+                # visual_feature = self.resnet(normalized_image.unsqueeze(0).to(self.device))
+                # # print(visual_feature.shape)
                 visual_feature = torch.squeeze(visual_feature, dim=0)
 
         # get dialogue history

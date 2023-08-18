@@ -5,36 +5,6 @@ import wave
 import numpy as np
 
 
-def weighted_word(T, start, end, tokens, fps=24, alpha=2):
-    '''
-    Input: timestamp of expression transition / raw voice data of single speaker
-    Output: 
-
-    Goal: give weight to specific word's attention mask when transition occur
-    Used: model.forward(), model.inference()
-    '''
-    for mini_batch in range(start.shape[0]):
-        non_zero = torch.count_nonzero(tokens['attention_mask'][mini_batch])
-        zeros = tokens['attention_mask'][mini_batch].shape[-1] - non_zero
-        pre_t = 0
-        for t in T[mini_batch]:
-            if t == 0:  # padding appear
-                break
-            if (t - pre_t) >= fps:  # at least 1 second
-                for i, (audio_start, audio_end) in enumerate(zip(start[mini_batch], end[mini_batch])):
-                    # ignore when longger than padding_size
-                    if i > len(tokens['attention_mask'][mini_batch]):
-                        continue
-                    if (audio_start == 0) and (audio_end == 0):  # padding appear
-                        break
-                    if audio_start < (t / fps) < audio_end:
-                        if tokens['attention_mask'][mini_batch][i+zeros] < alpha:  # duplication block
-                            tokens['attention_mask'][mini_batch][i +
-                                                                 zeros] = tokens['attention_mask'][mini_batch][i+zeros].float() * alpha
-            pre_t = t
-    return tokens
-
-
 def multimodal_concat(inputs_embeds, audio_feature):
     '''
     Input:  text embedding / audio feature
@@ -61,40 +31,6 @@ def forced_alignment_multimodal_concat(inputs_embeds, audio_feature):
     x = torch.cat((inputs_embeds, audio_feature), dim=2)
     x = x.view(x.shape[0], x.shape[1], -1)  # [batch, max_length, -1]
     return x
-
-
-def FER(frames):
-    '''
-    Input: frames of single speaker utterance video
-    Output: speaker's facial expression list / timestamp of expression transition
-
-    Module: DAN
-    Used: model.inference()
-    '''
-    from .DAN.demo import FER as DAN
-    expression_list = []
-    T = []
-    for frame in frames:
-        expression_list.append(DAN(frame))
-    for t in range(len(expression_list) - 1):
-        if expression_list[t] != expression_list[t+1]:
-            T.append(t+1)
-
-    return expression_list, T
-
-
-def forced_alignment(audio_path, transcript):
-    '''
-    Input: raw voice data of single speaker
-    Output: 2d array = [['word1', word2', ...], [start_t1, start_t2,...], [end_t1, end_t2, ...]]
-
-    Module: WAV2VEC 
-    Used: model.inference()
-    '''
-    from .Forced_Alignment.FA import get_dic as FA
-    word_timestamp = FA(audio_path, transcript)
-
-    return word_timestamp
 
 
 def pad(inputs, padding_size):
@@ -160,44 +96,6 @@ def audio_word_align(waveform, audio_path, start, end, audio_padding=50):
         audio_feature.append(word_waveform)
     torch_audio_feature = torch.stack(audio_feature, dim=0)  # list to torch.tensor
     return torch_audio_feature, waveform_start
-
-
-# def img_to_landmark(img_path, detector, processor):
-#     image = cv2.imread(img_path)
-#     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-#     try:
-#         rects = detector(gray, 1)
-#         top_left = rects[0].tl_corner()
-#         x0 = top_left.x
-#         y0 = top_left.y
-#         w = rects[0].width()
-#         h = rects[0].height()
-#         bbox = [x0*1.0, y0*1.0, w, h]
-#         features = processor.inference(image, [bbox])
-#         landmarks = np.array(features['landmarks'][0])
-#         # headpose = np.array(features['headpose'][0])
-
-#         diag = (w**2 + h**2)**0.5
-#         landmarks[:, 0:1] = (landmarks[:, 0:1] - x0) / diag
-#         landmarks[:, 1:2] = (landmarks[:, 1:2] - y0) / diag
-
-#         return landmarks.flatten()
-#     except:
-#         return [0 for i in range(196)]
-
-
-def get_landmark(dir_path, start, fps):
-    # landmark_list = []
-    # for frame in start:
-    #     if frame == 0:
-    #         landmark_list.append([0 for i in range(196)])
-    #         continue
-    #     target = int(frame*fps+1)
-    #     target = '{0:06d}'.format(target)
-    #     landmark_list.append(img_to_landmark(dir_path+target+'.jpg', detector, processor))
-    # # print(landmark_list)
-    # return torch.tensor(np.array(landmark_list), dtype=torch.float32)
-    return torch.tensor([])
 
 
 def get_aligned_landmark(landmark_set, waveform_start):

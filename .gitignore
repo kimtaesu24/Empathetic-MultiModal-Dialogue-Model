@@ -5,59 +5,10 @@ wandb/
 *.pickle
 *.jpg
 __pycache__/
+*.csv
+*.ipynb
+test_output/
+valid_output/
 
 ## root
 checkpoint/
-hyperparameter/
-run_decoder.py
-run_onepeace.py
-run.py
-videoMAE_encode.py
-videoMAE.py
-
-## src
-valid_output/
-valid_result_temp/
-one_peace/
-
-baseline.py
-dialogpt_validation.py
-inference_decoder.py
-inference_onepeace.py
-inference_dialogpt.py
-inference_graph.py
-inference.py
-
-train_decoder.py
-train_onepeace.py
-train_dialogpt.py
-train_graph.py
-train.py
-
-## data_loader
-arch_data_graph.py
-arch_data.py
-ECData_loader_dialogpt.py
-ECData_loader_graph.py
-MELD_loader_graph.py
-
-## models
-DAN/
-Forced_Alignment/
-
-architecture_decoder.py
-architecture_dialogpt.py
-architecture_graph.py
-architecture_onepeace.py
-architecture.py
-HypergraphConv.py
-model_hyper.py
-repitition.py
-
-## trainer
-trainer_decoder.py
-trainer_dialogpt.py
-trainer_graph.py
-trainer_onepeace.py
-trainer.py
-validation_dialogpt.py

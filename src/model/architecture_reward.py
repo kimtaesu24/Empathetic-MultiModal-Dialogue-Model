@@ -10,11 +10,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from . import modules
 from torch import nn
 from . import tf_decoder
-# from .model_hyper import HyperGCN
-# from one_peace.models import from_pretrained
 from .rewards import get_rewards
 
-# Yongsik Part
 from eval_metric.coco_eval import calculate_eval_matric
 
 
@@ -97,7 +94,8 @@ class MyArch(torch.nn.Module):
         self.audio_type = args.audio_type
         self.use_RL = args.use_RL
         self.use_manager = args.use_manager
-
+        self.use_query = args.use_query
+        
         if args.act == 'relu':
             self.act = nn.ReLU()
 
@@ -113,7 +111,7 @@ class MyArch(torch.nn.Module):
                 self.audio_feature_dimension = 1024
                 
             if args.visual_type == 'landmark':
-                self.visual_feature_dimension = 196 * 7
+                self.visual_feature_dimension = 196 * 7  # landmark dimension * number of landmark
             elif args.visual_type == 'face_image':
                 self.visual_feature_dimension = 512
             
@@ -160,6 +158,9 @@ class MyArch(torch.nn.Module):
         history_embeds = self.embedding_layer.weight.data[history['input_ids']]  # torch.Size([batch, history_len, word_dim])
         labels_embeds = self.embedding_layer.weight.data[labels['input_ids']]   # torch.Size([batch, max_len, word_dim])
         
+        if self.use_query:
+            history_embeds = torch.cat([history_embeds, inputs_embeds], dim=1)
+            history['attention_mask'] = torch.cat([history['attention_mask'], textual['attention_mask']], dim=1)
         
         if self.fusion_type == 'tf_decoder':
             # ==== step 1. multimodal feature ====
@@ -176,40 +177,29 @@ class MyArch(torch.nn.Module):
                 feature = self.transformer_fusion(tgt=inputs_embeds, memory=acoustic_feature, tgt_key_padding_mask=textual['attention_mask'])
             elif ('v' in self.modals) and ('l' in self.modals):
                 feature = self.transformer_fusion(tgt=inputs_embeds, memory=visual_feature, tgt_key_padding_mask=textual['attention_mask'])
-                
+            
             inputs_embeds = feature  # torch.Size([batch, max_len, word_dim])
-            
+
             concat_inputs = torch.cat([history_embeds, inputs_embeds, labels_embeds], dim=1)  # torch.Size([batch, history_len + max_len + max_len, word_dim])
-            concat_mask = torch.cat([history['attention_mask'], textual['attention_mask'], labels['attention_mask']], dim=1)
-            
+            concat_mask = torch.cat([history['attention_mask'], textual['attention_mask'], labels['attention_mask']], dim=1)    
         else:
             concat_inputs = torch.cat([history_embeds, inputs_embeds, labels_embeds], dim=1)  # torch.Size([batch, history_len + max_len + max_len, word_dim])
             concat_mask = torch.cat([history['attention_mask'], textual['attention_mask'], labels['attention_mask']], dim=1)
             
-        # ==== step 3. utterance level train ====
+        # # ==== step 3. utterance level train ====
         if self.use_manager:
             utterance_input = torch.cat([history_embeds, inputs_embeds], dim=1)
-            # print("utterance_input:", utterance_input.shape)
             z, mu, logvar = self.vae_encoder(utterance_input)
-            # print("mu:", mu.shape)
-            # print("logvar:", logvar.shape)
             x_reconst = self.vae_decoder(z)
             
             ''' https://github.com/natashamjaques/neural_chat/blob/master/model/utils/probability.py '''
-            # reconst_loss1 = 0.5 * torch.sum(-torch.log(torch.tensor(2.0) * np.pi) - torch.log(logvar) - ((z - mu).pow(2) / logvar), dim=1)
             reconst_loss1 = 0.5 * torch.sum(-torch.log(torch.tensor(2.0) * np.pi) - logvar[:,-1,:] - ((z[:,-1,:] - mu[:,-1,:]).pow(2) / logvar[:,-1,:].exp()), dim=1)
-            # print("x_reconst:", x_reconst.shape)
-            # print("utterance_input:", utterance_input.shape)
-            # print("reconst_loss1: ",reconst_loss1)
             reconst_loss2 = F.mse_loss(x_reconst, utterance_input, reduction='mean')
-            # print("reconst_loss2: ",reconst_loss2)
-
-            # kl_div = 0.5 * torch.sum(mu.pow(2) + logvar.exp() - logvar - 1)
             
             concat_inputs = torch.cat([x_reconst, labels_embeds], dim=1)
 
-            # manager_loss = reconst_loss + kl_div
             manager_loss = -self.alpha * reconst_loss1.sum() + reconst_loss2
+            
         else:
             manager_loss = 0
         
@@ -217,7 +207,11 @@ class MyArch(torch.nn.Module):
         outputs = self.gpt_model(inputs_embeds=concat_inputs,
                                  attention_mask=concat_mask,
                                  )
-        sft_idx = textual['input_ids'].shape[-1] + history['input_ids'].shape[-1]
+        if self.use_query:
+            sft_idx = textual['input_ids'].shape[-1] + history['input_ids'].shape[-1] + textual['input_ids'].shape[-1]
+        else:
+            sft_idx = textual['input_ids'].shape[-1] + history['input_ids'].shape[-1]
+        
             
         out_logit = outputs.logits[:, sft_idx-1:-1].contiguous().view(-1, 50257)
         
@@ -231,9 +225,9 @@ class MyArch(torch.nn.Module):
             
             pre_sentence = self.tokenizer.batch_decode(textual['input_ids'], skip_special_tokens=True)
             rewards = get_rewards(pre_sentence=pre_sentence, output_sentence=output_sentence)
-            total_loss = (manager_loss +  self.beta * worker_loss) * (1/rewards)
+            total_loss = (manager_loss + self.beta * worker_loss) * (1/rewards)
         else:
-            total_loss = (manager_loss +  self.beta * worker_loss)
+            total_loss = (manager_loss + self.beta * worker_loss)
 
         if metric_log:
             attention_mask = torch.cat([history['attention_mask'], textual['attention_mask']], dim=1)
@@ -248,13 +242,16 @@ class MyArch(torch.nn.Module):
                                             top_p=0.90,
                                             )
             
-            # eval_result = self.get_eval_matric(output, labels['input_ids'])
-            outputs_sentence = self.tokenizer.batch_decode(output, skip_special_tokens=True)
-            ref_sentence = self.tokenizer.batch_decode(labels['input_ids'], skip_special_tokens=True)
-
-            eval_result = calculate_eval_matric(outputs_sentence, ref_sentence)
+            eval_result = self.get_eval_matric(output, labels['input_ids'])
             
-            self.save_output(outputs_sentence, epoch)
+            #############################################################################################
+            # outputs_sentence = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+            # ref_sentence = self.tokenizer.batch_decode(labels['input_ids'], skip_special_tokens=True)
+
+            # eval_result = calculate_eval_matric(outputs_sentence, ref_sentence)
+            
+            # self.save_output(outputs_sentence, ref_sentence, epoch)
+            #############################################################################################
         else:
             eval_result = None
 
@@ -273,19 +270,21 @@ class MyArch(torch.nn.Module):
         visual = torch.unsqueeze(visual, dim=0)
         history['input_ids'] = torch.unsqueeze(history['input_ids'], dim=0)
         history['attention_mask'] = torch.unsqueeze(history['attention_mask'], dim=0)
-        
+
+        textual['input_ids'] = torch.squeeze(textual['input_ids'], dim=1)  # [batch_size, padding_size]
+        textual['attention_mask'] = torch.squeeze(textual['attention_mask'], dim=1)        
         history['input_ids'] = torch.squeeze(history['input_ids'], dim=1)  # [batch_size, padding_size]
         history['attention_mask'] = torch.squeeze(history['attention_mask'], dim=1)
+        
+        inputs_embeds = self.embedding_layer.weight.data[textual['input_ids']]  # torch.Size([batch, max_len, word_dim])
         history_embeds = self.embedding_layer.weight.data[history['input_ids']]  # torch.Size([batch, history_len, word_dim])
         
-        
-        if self.fusion_type == 'tf_decoder':
-            # ==== step 0. preprocess ====
-            textual['input_ids'] = torch.squeeze(textual['input_ids'], dim=1)  # [batch_size, padding_size]
-            textual['attention_mask'] = torch.squeeze(textual['attention_mask'], dim=1)
+        if self.use_query:
+            history_embeds = torch.cat([history_embeds, inputs_embeds], dim=1)
+            history['attention_mask'] = torch.cat([history['attention_mask'], textual['attention_mask']], dim=1)
             
+        if self.fusion_type == 'tf_decoder':
             # ==== step 1. multimodal feature ====
-            inputs_embeds = self.embedding_layer.weight.data[textual['input_ids']]  # torch.Size([batch, max_len, word_dim])
             if 'a' in self.modals:
                 acoustic_feature = self.audio_projection_layer(acoustic)  # torch.Size([batch, audio_pad_size, word_dim])
             if 'v' in self.modals:
@@ -358,22 +357,23 @@ class MyArch(torch.nn.Module):
 
         return eval_result
 
-    def save_output(self, output, epoch):
-        json_name = f'{self.modals}_manager:{self.use_manager}_RL:{self.use_RL}_alpha:{str(self.alpha)}_{epoch}epoch_result.json'
-        # 1. 기존 데이터 불러오기
+    def save_output(self, output, ref_sentence, epoch):
+        json_name = f'query:{self.use_query}{self.modals}_manager:{self.use_manager}_RL:{self.use_RL}_alpha:{str(self.alpha)}_{epoch}epoch_result.json'
+        # 1. load data
         try:
             with open(self.json_directory + json_name, 'r') as json_file:
                 existing_data = json.load(json_file)
         except FileNotFoundError:
             existing_data = []
 
-        # 2. 새 데이터 추가
+        # 2. add new data
         new_entry = {
-            'output': output
+            'output': output,
+            'ref_sentence': ref_sentence
         }
 
         existing_data.append(new_entry)
 
-        # 3. 업데이트된 데이터 저장
+        # 3. saver updated data
         with open(self.json_directory + json_name, 'w') as json_file:
             json.dump(existing_data, json_file, indent=4)
