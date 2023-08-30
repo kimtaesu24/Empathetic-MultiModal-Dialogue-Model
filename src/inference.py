@@ -10,7 +10,7 @@ import warnings
 import natsort
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from model.architecture_reward import MyArch
+from model.architecture import MyArch
 from utils.util import log_args
 from model import modules
 from facenet_pytorch import InceptionResnetV1

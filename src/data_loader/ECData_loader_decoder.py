@@ -28,7 +28,6 @@ class EC_Decoder_Dataset(Dataset):
         self.max_length =args.max_length
         self.history_length = args.history_length
         self.audio_pad_size = args.audio_pad_size
-        self.fusion_type = args.fusion_type
 
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-large", pad_token='*', bos_token='#')
         self.tokenizer.padding_side = 'left'
@@ -44,22 +43,12 @@ class EC_Decoder_Dataset(Dataset):
         self.history_path = f'{self.data_path}{mode}/text/history'
         self.manual_index = 0
         
-        # self.transform = transforms.Compose([
-        #     transforms.Resize((160,160)),        # Resize the image to the desired size
-        #     transforms.ToTensor()                   # Convert the image to a PyTorch tensor
-        # ])
-        # self.mtcnn = MTCNN()
-        # self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
-        
         self.visual_list = os.listdir(f'{self.data_path}/{mode}/speaker_image/')
         self.mode = mode
 
     def __len__(self):
         total_data = len(os.listdir(f'{self.data_path}{self.mode}/speaker_image'))
         total_dia = max(self.text_data['Dialogue_ID'])
-        # for idx in range(len(os.listdir(f'{self.data_path}{self.mode}/speaker_image')) - 1):
-        #     if (self.text_data['Dialogue_ID'][idx] == self.text_data['Dialogue_ID'][idx+1]):  # same dialogue
-        #         length += 1
         if self.mode == 'test':
             return total_data - total_dia - 1
         else:
@@ -79,9 +68,6 @@ class EC_Decoder_Dataset(Dataset):
         
         dia_id = data.split('_')[0][3:]
         utt_id = data.split('_')[1][3:]
-        
-        # dia_id = self.text_data['Dialogue_ID'][idx]
-        # utt_id = self.text_data['Utterance_ID'][idx]
         
         # extract textual feature
         context = ' '.join(self.text_data['Utterance'][(self.text_data['Dialogue_ID'] == int(dia_id)) & (self.text_data['Utterance_ID'] == int(utt_id))])
@@ -125,14 +111,6 @@ class EC_Decoder_Dataset(Dataset):
                 src_path = f"{self.data_path}/{self.mode}/face_feature/dia{dia_id}_utt{utt_id}/"
                 dirListing = os.listdir(src_path)
                 visual_feature = torch.load(src_path + dirListing[0])
-                # image_path = src_path+f'/{format(dirListing[(len(dirListing))//2])}'  # middle file in the directory
-                # img = Image.open(image_path)
-                # # print(img.size)
-                # # img_cropped = self.mtcnn(img)
-                # normalized_image = self.transform(img)
-                # # print(img_cropped.shape)
-                # visual_feature = self.resnet(normalized_image.unsqueeze(0).to(self.device))
-                # # print(visual_feature.shape)
                 visual_feature = torch.squeeze(visual_feature, dim=0)
 
         # get dialogue history

@@ -5,7 +5,7 @@ import datetime
 from data_loader.MELD_loader_decoder import MELD_Decoder_Dataset
 from data_loader.ECData_loader_decoder import EC_Decoder_Dataset
 from torch.utils.data import DataLoader
-from model.architecture_reward import MyArch
+from model.architecture import MyArch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from eval_metric.coco_eval import calculate_eval_matric

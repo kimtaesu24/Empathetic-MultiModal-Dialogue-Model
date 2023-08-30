@@ -2,10 +2,10 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from sentence_transformers import SentenceTransformer
 
-from .question import reward_question
-from .semantic_similarity import reward_similarity
-from .sentiment import reward_bot_deepmoji
-from .toxicity import reward_for_toxicity
+from .question import score_question
+from .semantic_similarity import score_similarity
+from .sentiment import score_bot_sentiment
+from .toxicity import score_for_toxicity
 
 from transformers import pipeline
 
@@ -19,21 +19,21 @@ similarity_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2'
 
 sentiment_analysis = pipeline("sentiment-analysis",model="siebert/sentiment-roberta-large-english", device=device)
 
-def get_rewards(pre_sentence, output_sentence):
-    toxicity = reward_for_toxicity(toxicity_pipeline, output_sentence)
-    question = reward_question(output_sentence)
-    similarity = reward_similarity(similarity_model, [pre_sentence, output_sentence])
-    sentiment = reward_bot_deepmoji(sentiment_analysis, output_sentence)
+def get_scores(pre_sentence, output_sentence):
+    toxicity = score_for_toxicity(toxicity_pipeline, output_sentence)
+    question = score_question(output_sentence)
+    similarity = score_similarity(similarity_model, [pre_sentence, output_sentence])
+    sentiment = score_bot_sentiment(sentiment_analysis, output_sentence)
     
     # print("toxicity: ",toxicity)
     # print("question: ",question)
     # print("similarity: ",similarity)
     # print("sentiment: ",sentiment)
 
-    rewards = toxicity + question + similarity + sentiment
+    scores = toxicity + question + similarity + sentiment
     
-    # print(rewards)
-    return rewards
+    # print(score)
+    return scores
 
 if __name__=="__main__":
-    rewards = get_rewards(pre_sentence=["Yes! You are so smart! I love you."], output_sentence=["I love you too."])
+    score = get_scores(pre_sentence=["Yes! You are so smart! I love you."], output_sentence=["I love you too."])

@@ -3,8 +3,8 @@ import os
 import argparse
 
 from utils.util import set_random_seed, log_args
-from trainer.trainer_reward import MyTrainer
-from trainer.test_reward import MyTester
+from trainer.trainer import MyTrainer
+from trainer.test import MyTester
 import warnings
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -59,19 +59,19 @@ if __name__ == "__main__":
     parser.add_argument('--max_length', type=int, default=60, help='maximum length of utterance')
     parser.add_argument('--history_length', type=int, default=256, help='maximum length of dialogue history')
     parser.add_argument('--audio_pad_size', type=int, default=350, help='time domain padding size for audio')
-    parser.add_argument('--alpha', type=float, default=0.001, help='weight for manager component')
-    parser.add_argument('--beta', type=float, default=1.0, help='weight for woker component')
+    # parser.add_argument('--alpha', type=float, default=0.001, help='weight for manager component')
+    # parser.add_argument('--beta', type=float, default=1.0, help='weight for woker component')
     parser.add_argument('--dropout', type=float, default=0.2, help='dropout rate')
     parser.add_argument('--decay_rate', type=float, default=0.98, help='decay rate of learning rate')
     parser.add_argument('--save_at_every', type=int, default=5, help='save checkpoint')
     parser.add_argument('--metric_at_every', type=int, default=5, help='calculate metric scores')
     parser.add_argument('--LLM_freeze', action='store_true', default=False, help='freeze language decoder or not')
     parser.add_argument('--audio_type', default='wavlm', help='audio feature extract type |wav2vec2')
-    parser.add_argument('--fusion_type', default='tf_decoder', help='modal fusion method |graph')
+    # parser.add_argument('--fusion_type', default='tf_decoder', help='modal fusion method |graph')
     parser.add_argument('--visual_type', default='face_image', help='visual feature type |landmark')
     parser.add_argument('--modals', default='avl', help='modals to fusion')
-    parser.add_argument('--use_manager', action='store_true', default=False, help='use reinforcement learning on training or not')
-    parser.add_argument('--use_RL', action='store_true', default=False, help='use reward on training or not')
+    # parser.add_argument('--use_manager', action='store_true', default=False, help='use reinforcement learning on training or not')
+    parser.add_argument('--use_score', action='store_true', default=False, help='score loss while training or not')
     parser.add_argument('--use_query', action='store_true', default=False, help='use leanable query on training or not')
     parser.add_argument('--resume', default=None, help='resume train with checkpoint path or not')
     parser.add_argument('--debug', action='store_true', default=False, help='debug mode for wandb')

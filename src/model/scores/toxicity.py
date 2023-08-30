@@ -1,7 +1,6 @@
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, TextClassificationPipeline
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-def reward_for_toxicity(toxicity_pipeline, conversation):
+def score_for_toxicity(toxicity_pipeline, conversation):
     '''
     [{'label': 'toxic', 'score': 0.9607304334640503}, {'label': 'non-toxic', 'score': 0.9967865943908691}]
     '''
@@ -19,4 +18,4 @@ if __name__=="__main__":
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForSequenceClassification.from_pretrained(model_path)
 
-    print(reward_for_toxicity(model, tokenizer, ['I fucking hate this bull shit world', 'I like this world']))
+    print(score_for_toxicity(model, tokenizer, ['I fucking hate this bull shit world', 'I like this world']))
