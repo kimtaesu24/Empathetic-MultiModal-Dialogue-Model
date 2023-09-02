@@ -16,10 +16,9 @@ from model.modules import *
 # sys.path.insert(0, '/home2/s20235100/Conversational-AI/MyModel/src/model/')
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "microsoft/DialoGPT-large", pad_token='!', bos_token='#')
+    "microsoft/DialoGPT-large", pad_token='*', bos_token='#')
 tokenizer.padding_side = 'left'
 tokenizer.truncation_side = 'left'
-# tokenizer.pad_token = '!'
 
 wave_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
 wave_processor = Wav2Vec2Processor.from_pretrained(

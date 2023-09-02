@@ -1,7 +1,6 @@
 import torch
 
-from data_loader.MELD_loader_decoder import MELD_Decoder_Dataset
-from data_loader.ECData_loader_decoder import EC_Decoder_Dataset
+from data_loader.ECData_loader import EC_Decoder_Dataset
 from torch.utils.data import DataLoader
 from model.architecture import MyArch
 from tqdm import tqdm
@@ -10,7 +9,7 @@ from eval_metric.coco_eval import calculate_eval_matric
 
 import os
 import wandb
-
+import json
 
 class MyTrainer:
     def __init__(self, device, data_path):
@@ -20,8 +19,8 @@ class MyTrainer:
 
     def train_with_hyper_param(self, args):
         # save dir create
-        checkpoint_directory = f"../checkpoint/{args.data_name}/{args.modals}_score:{args.use_RL}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}/"
-        json_directory = f"./valid_output/{args.data_name}/{args.modals}_score:{args.use_RL}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}/"
+        checkpoint_directory = f"../checkpoint/{args.data_name}/{args.modals}_score:{args.use_score}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}/"
+        json_directory = f"./json_output/{args.data_name}/{args.modals}_score:{args.use_score}_query:{args.use_query}_visual:{args.visual_type}_audio:{args.audio_type}/"
         try:
             if not os.path.exists(checkpoint_directory):
                 os.makedirs(checkpoint_directory)
@@ -43,9 +42,6 @@ class MyTrainer:
             model.to(self.device)
             print('checkpoint Model has loaded')
 
-        # if args.data_name == 'MELD':
-        #     train_dataset = MELD_Decoder_Dataset(self.data_path, mode='train', device=self.device, args=args)
-        #     valid_dataset = MELD_Decoder_Dataset(self.data_path, mode='valid', device=self.device, args=args)
         if args.data_name == 'MSC':
             train_dataset = EC_Decoder_Dataset(self.data_path, mode='train', device=self.device, args=args)
             valid_dataset = EC_Decoder_Dataset(self.data_path, mode='valid', device=self.device, args=args)
@@ -76,7 +72,7 @@ class MyTrainer:
             for i, (inputs, labels) in enumerate(prog_bar):
                 optimizer.zero_grad()
                 
-                loss, eval_result = model(inputs, labels)
+                loss = model(inputs, labels)
                 
                 prog_bar.set_postfix({'loss': loss.item()})
                 
@@ -94,7 +90,7 @@ class MyTrainer:
                 model.eval()
                 metric_log = (epoch+1) % args.metric_at_every == 0
                 for inputs, labels in tqdm(valid_dataloader, position=1, leave=False, desc='batch'):
-                    loss, eval_result = model(inputs, labels, metric_log=metric_log, epoch=epoch+1)
+                    loss = model(inputs, labels, metric_log=metric_log, epoch=epoch+1)
                     total_valid_loss += loss.item()
 
             # log
@@ -103,10 +99,10 @@ class MyTrainer:
                                  }
             
             if metric_log:
-                # load json
-                # output_sentence = json['outputs_sentence']
-                # ref_sentence = json['ref_sentence']
-                eval_result = calculate_eval_matric(outputs_sentence, ref_sentence)
+                with open(json_directory + f'epoch:{epoch+1}_result.json', 'r') as f:
+                    output_json = json.load(f)
+                eval_result = self.get_metrics(output_json)
+
                 output_metric_dict = {'valid_Bleu-1 (epoch)': eval_result['Bleu_1'],
                                       'valid_Bleu-2 (epoch)': eval_result['Bleu_2'],
                                       'valid_Bleu-3 (epoch)': eval_result['Bleu_3'],
@@ -116,7 +112,7 @@ class MyTrainer:
                                       'valid_CIDEr (epoch)': eval_result['CIDEr'],
                                       'valid_SPICE (epoch)': eval_result['SPICE'],
                                       }
-                    
+            
             if not args.debug:  # code for debug mode
                 wandb.log(output_loss__dict)
                 print(output_loss__dict)
@@ -136,3 +132,14 @@ class MyTrainer:
         pbar.close()
 
         return model
+
+    def get_metrics(self, output_json):
+        # scores = {'Bleu_1':0.0, 'Bleu_2':0.0, 'Bleu_3':0.0, 'Bleu_4':0.0, 'METEOR':0.0, 'ROUGE_L':0.0, "CIDEr":0.0, "SPICE":0.0}
+        outputs_sentence = []
+        ref_sentence = []
+        for dat in output_json:
+            outputs_sentence += dat["output_sentence"]
+            ref_sentence += dat["ref_sentence"]
+            
+        eval_result = calculate_eval_matric(outputs_sentence, ref_sentence)
+        return eval_result

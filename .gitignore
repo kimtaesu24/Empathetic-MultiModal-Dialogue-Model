@@ -9,6 +9,10 @@ __pycache__/
 *.ipynb
 test_output/
 valid_output/
+json_output/
 
 ## root
 checkpoint/
+
+## trainer
+src/trainer/test.py

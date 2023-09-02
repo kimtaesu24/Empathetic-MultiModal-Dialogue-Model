@@ -8,8 +8,6 @@ pip install torch-scatter torch-cluster torch-spline-conv
 pip install torch-sparse==0.6.14
 pip install torch-geometric==1.7.2
 pip install ipdb
-cd ONE-PEACE
-pip install -r requirements.txt
 pip install sentence-transformers
 conda install matplotlib
 pip install scikit-image

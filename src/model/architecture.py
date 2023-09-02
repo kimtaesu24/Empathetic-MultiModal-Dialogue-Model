@@ -37,10 +37,10 @@ class MyArch(torch.nn.Module):
         self.embedding_layer = self.generator_model.get_input_embeddings()
         self.word_dimension = self.generator_model.config.hidden_size  # 1280
         
-        if ('a' in self.modals) and ('v' in self.modals) and ('l' in self.modals):
+        if len(self.modals) == 3:  # 'avl'
             self.fusion_layer = tf_decoder.TransformerDecoderLayer(d_model=self.word_dimension, nhead=8, batch_first=True)
             self.transformer_fusion = tf_decoder.TransformerDecoder(self.fusion_layer, num_layers=6)
-        if (('a' in self.modals) and ('l' in self.modals)) or (('v' in self.modals) and ('l' in self.modals)):
+        if len(self.modals) == 2:  # 'al' 'vl'
             self.fusion_layer = nn.TransformerDecoderLayer(d_model=self.word_dimension, nhead=8, batch_first=True)
             self.transformer_fusion = nn.TransformerDecoder(self.fusion_layer, num_layers=6)
         
@@ -65,7 +65,7 @@ class MyArch(torch.nn.Module):
         self.loss_function = nn.CrossEntropyLoss()
 
 
-    def forward(self, inputs, label, metric_log=False):
+    def forward(self, inputs, label, metric_log=False, epoch=0):
         textual = inputs[0]  # token || context
         acoustic = inputs[1]   # [batch, max_length, audio_dim] || audio path
         visual = inputs[2]  # [batch, 1, visual_dim] || image path
@@ -149,7 +149,7 @@ class MyArch(torch.nn.Module):
             outputs_sentence = self.tokenizer.batch_decode(output, skip_special_tokens=True)
             ref_sentence = self.tokenizer.batch_decode(labels['input_ids'], skip_special_tokens=True)
             
-            self.save_output(outputs_sentence, ref_sentence)
+            self.save_output(outputs_sentence, ref_sentence, epoch)
 
         return loss
 
