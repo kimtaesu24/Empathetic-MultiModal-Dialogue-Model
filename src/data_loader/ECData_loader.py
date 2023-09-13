@@ -43,16 +43,16 @@ class EC_Decoder_Dataset(Dataset):
         self.history_path = f'{self.data_path}{mode}/text/history'
         self.manual_index = 0
         
-        self.visual_list = os.listdir(f'{self.data_path}/{mode}/speaker_image/')
+        self.visual_list = natsort.natsorted(os.listdir(f'{self.data_path}/{mode}/speaker_image/'))
         self.mode = mode
 
     def __len__(self):
-        total_data = len(os.listdir(f'{self.data_path}{self.mode}/speaker_image'))
-        total_dia = max(self.text_data['Dialogue_ID'])
-        if self.mode == 'test':
-            return total_data - total_dia - 1
-        else:
-            return total_data - total_dia 
+        length = 0
+        for idx in range(len(self.visual_list) -1):  # except last one
+            if (self.text_data['Dialogue_ID'][idx] == self.text_data['Dialogue_ID'][idx+1]):  # same dialogue
+                if (self.text_data['Utterance_ID'][idx] == (self.text_data['Utterance_ID'][idx+1] - 1)):  # next utterance
+                    length += 1
+        return length
 
     def __getitem__(self, idx):
         if idx == 0:
