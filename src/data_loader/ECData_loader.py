@@ -110,7 +110,7 @@ class EC_Decoder_Dataset(Dataset):
             elif self.visual_type == 'face_image':
                 src_path = f"{self.data_path}/{self.mode}/face_feature/dia{dia_id}_utt{utt_id}/"
                 dirListing = os.listdir(src_path)
-                visual_feature = torch.load(src_path + dirListing[0])
+                visual_feature = torch.load(src_path + f'/{format(dirListing[(len(dirListing))//2])}')
                 visual_feature = torch.squeeze(visual_feature, dim=0)
 
         # get dialogue history

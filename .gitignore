@@ -10,7 +10,7 @@ __pycache__/
 test_output/
 valid_output/
 json_output/
-
+*.sh
 ## root
 checkpoint/
 
